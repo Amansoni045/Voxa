@@ -32,6 +32,19 @@ def load_model():
     return _model 
 
 
+def detect_language(sample_chunk_path: str) -> tuple[str, float]:
+    """Detect language and probability from the first audio chunk using Whisper."""
+    model = load_model()
+    audio = whisper.load_audio(sample_chunk_path)
+    audio = whisper.pad_or_trim(audio)
+    mel = whisper.log_mel_spectrogram(audio).to(model.device)
+    _, probs = model.detect_language(mel)
+    detected_lang = max(probs, key=probs.get)
+    confidence = probs.get(detected_lang, 0.0)
+    print(f"Detected language: {detected_lang} (confidence: {confidence:.2f})")
+    return detected_lang, confidence
+
+
 def transcribe_chunk_whisper(chunk_path: str) -> str:
 
     model = load_model()  
@@ -122,9 +135,9 @@ def transcribe_chunk(chunk_path: str, language: str = "english") -> str:
     """
     Route one chunk to Whisper or Sarvam depending on language choice.
     - english  → Whisper (local model)
-    - hinglish → Sarvam (translates to English while transcribing)
+    - hinglish / non-english → Sarvam (translates to English while transcribing)
     """
-    if language.lower() == "hinglish":
+    if language.lower() in ("hinglish", "sarvam"):
         return transcribe_chunk_sarvam(chunk_path)
     return transcribe_chunk_whisper(chunk_path)
 
@@ -158,11 +171,21 @@ def _transcribe_single_chunk_worker(chunk_info: tuple) -> str:
         return ""
 
 
-def transcribe_all(chunks: list, language: str = "english") -> str:
+def transcribe_all(chunks: list, language: str = "auto") -> str:
     if not chunks:
         return ""
 
-    engine = "Sarvam AI" if language.lower() == "hinglish" else "Whisper"
+    if language.lower() == "auto":
+        detected_lang, confidence = detect_language(chunks[0])
+        if detected_lang == "en" and confidence >= 0.6:
+            engine = "Whisper"
+            language = "english"
+        else:
+            engine = "Sarvam AI"
+            language = "hinglish"
+    else:
+        engine = "Sarvam AI" if language.lower() in ("hinglish", "sarvam") else "Whisper"
+
     print(f"Using {engine} for transcription.")
 
     cache_dir = _get_cache_dir(chunks)
