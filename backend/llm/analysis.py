@@ -11,7 +11,7 @@ from backend.llm.prompts import (
     OPEN_QUESTIONS_CLEANUP_PROMPT,
 )
 from backend.llm.summary import generate_summary, generate_title, split_transcript_for_summary
-from backend.models.meeting import MeetingAnalysis
+from backend.models.meeting import MeetingAnalysis, SectionResult, SectionStatus
 from backend.models.api import APIResponse
 from backend.shared.logger import get_logger
 
@@ -33,64 +33,75 @@ def _is_empty_or_negative(text: str) -> bool:
 
 def extract_with_map_reduce(transcript: str, extraction_prompt: str, cleanup_prompt: str) -> str:
     if not transcript or not transcript.strip():
-        return "No action items found."
+        return ""
 
     chunks = split_transcript_for_summary(transcript)
     if not chunks:
-        return "No action items found."
+        return ""
 
     extraction_chain = build_extraction_chain(extraction_prompt, temperature=0.2)
     valid_partial_results: List[str] = []
 
     for i, chunk in enumerate(chunks):
-        try:
-            res = extraction_chain.invoke(chunk)
-            if res and res.strip() and not _is_empty_or_negative(res):
-                valid_partial_results.append(res.strip())
-        except Exception as e:
-            logger.error("Skipping chunk %d due to error: %s", i + 1, e)
+        res = extraction_chain.invoke(chunk)
+        if res and res.strip() and not _is_empty_or_negative(res):
+            valid_partial_results.append(res.strip())
 
     if not valid_partial_results:
-        return "No action items found."
+        return ""
 
     if len(chunks) == 1 or len(valid_partial_results) == 1:
         return valid_partial_results[0]
 
     combined_results = "\n\n".join(valid_partial_results)
     cleanup_chain = build_extraction_chain(cleanup_prompt, temperature=0.2)
+    cleanup_res = cleanup_chain.invoke(combined_results)
+    return cleanup_res.strip() if cleanup_res else ""
+
+def safe_run_section(func, transcript: str) -> SectionResult:
     try:
-        cleanup_res = cleanup_chain.invoke(combined_results)
-        return cleanup_res.strip() if cleanup_res else "No action items found."
+        raw_res = func(transcript)
+        if not raw_res or _is_empty_or_negative(raw_res):
+            return SectionResult.empty()
+        return SectionResult.ok(raw_res)
     except Exception as e:
-        logger.error("Cleanup phase failed: %s", e)
-        return combined_results
+        logger.error("Section extraction failed: %s", e)
+        return SectionResult.fail(e, provider="Mistral AI")
 
-def extract_action_items(transcript: str) -> str:
-    res = extract_with_map_reduce(transcript, ACTION_ITEMS_EXTRACTION_PROMPT, ACTION_ITEMS_CLEANUP_PROMPT)
-    return "No action items found." if _is_empty_or_negative(res) else res
+def run_parallel_analysis(transcript: str) -> Dict[str, SectionResult]:
+    def safe_title(t: str) -> str:
+        try:
+            return generate_title(t) or "Untitled Analysis"
+        except Exception:
+            return "Untitled Analysis"
 
-def extract_key_decisions(transcript: str) -> str:
-    res = extract_with_map_reduce(transcript, KEY_DECISIONS_EXTRACTION_PROMPT, KEY_DECISIONS_CLEANUP_PROMPT)
-    return "No key decisions found." if _is_empty_or_negative(res) else res
-
-def extract_questions(transcript: str) -> str:
-    res = extract_with_map_reduce(transcript, OPEN_QUESTIONS_EXTRACTION_PROMPT, OPEN_QUESTIONS_CLEANUP_PROMPT)
-    return "No open questions found." if _is_empty_or_negative(res) else res
-
-def _safe_run(func, transcript: str, fallback: str = "") -> str:
-    try:
-        return func(transcript)
-    except Exception as e:
-        logger.error("Task execution error in parallel pipeline: %s", e)
-        return fallback
-
-def run_parallel_analysis(transcript: str) -> Dict[str, Any]:
     parallel_pipeline = RunnableParallel(
-        summary=RunnableLambda(lambda t: _safe_run(generate_summary, t, fallback="")),
-        action_items=RunnableLambda(lambda t: _safe_run(extract_action_items, t, fallback="No action items found.")),
-        key_decisions=RunnableLambda(lambda t: _safe_run(extract_key_decisions, t, fallback="No key decisions found.")),
-        questions=RunnableLambda(lambda t: _safe_run(extract_questions, t, fallback="No open questions found.")),
-        title=RunnableLambda(lambda t: _safe_run(generate_title, t, fallback="Untitled Meeting")),
+        summary=RunnableLambda(lambda t: safe_run_section(generate_summary, t)),
+        action_items=RunnableLambda(
+            lambda t: safe_run_section(
+                lambda text: extract_with_map_reduce(
+                    text, ACTION_ITEMS_EXTRACTION_PROMPT, ACTION_ITEMS_CLEANUP_PROMPT
+                ),
+                t,
+            )
+        ),
+        key_decisions=RunnableLambda(
+            lambda t: safe_run_section(
+                lambda text: extract_with_map_reduce(
+                    text, KEY_DECISIONS_EXTRACTION_PROMPT, KEY_DECISIONS_CLEANUP_PROMPT
+                ),
+                t,
+            )
+        ),
+        questions=RunnableLambda(
+            lambda t: safe_run_section(
+                lambda text: extract_with_map_reduce(
+                    text, OPEN_QUESTIONS_EXTRACTION_PROMPT, OPEN_QUESTIONS_CLEANUP_PROMPT
+                ),
+                t,
+            )
+        ),
+        title=RunnableLambda(safe_title),
     )
     return parallel_pipeline.invoke(transcript)
 
@@ -103,13 +114,15 @@ def process_transcript_api(transcript: str) -> Dict[str, Any]:
             ).model_dump()
 
         raw_data = run_parallel_analysis(transcript)
+
         analysis = MeetingAnalysis(
-            title=raw_data.get("title", "Untitled Meeting"),
-            summary=raw_data.get("summary", ""),
-            action_items=raw_data.get("action_items", "No action items found."),
-            key_decisions=raw_data.get("key_decisions", "No key decisions found."),
-            questions=raw_data.get("questions", "No open questions found.")
+            title=raw_data.get("title", "Untitled Analysis"),
+            summary=raw_data.get("summary", SectionResult.empty()),
+            action_items=raw_data.get("action_items", SectionResult.empty()),
+            key_decisions=raw_data.get("key_decisions", SectionResult.empty()),
+            questions=raw_data.get("questions", SectionResult.empty()),
         )
+
         return APIResponse[MeetingAnalysis].ok(analysis).model_dump()
     except Exception as e:
         logger.exception("Error processing transcript in API pipeline")

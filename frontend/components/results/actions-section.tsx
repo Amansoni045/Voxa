@@ -3,11 +3,12 @@
 import { motion } from 'framer-motion'
 import { SectionLabel } from '@/components/shared/section-label'
 import { EmptyState } from '@/components/shared/empty-state'
+import { SectionErrorCard } from '@/components/results/section-error-card'
 import { parseActionItems } from '@/lib/parsers'
 import { getActionsEmptyMessage } from '@/lib/content-helpers'
 import { useContentStore } from '@/stores/content-store'
 import { staggerContainer, documentCascade, toggleFill } from '@/lib/motion'
-import type { ActionItem, ContentType } from '@/types/content'
+import { getSectionResult, type ActionItem, type ContentType, type SectionResult } from '@/types/content'
 
 function ActionRow({ item }: { item: ActionItem }) {
   const completedItems = useContentStore((s) => s.completedItems)
@@ -73,27 +74,27 @@ function ActionRow({ item }: { item: ActionItem }) {
 }
 
 interface ActionsSectionProps {
-  text: string
+  text: SectionResult | string
   contentId: string
   sourceType?: ContentType
   isVisible: boolean
+  onRetry?: () => void
 }
 
-export function ActionsSection({ text, contentId, sourceType = 'recording', isVisible }: ActionsSectionProps) {
-  const items = parseActionItems(text)
+export function ActionsSection({ text, contentId, sourceType = 'recording', isVisible, onRetry }: ActionsSectionProps) {
+  const result = getSectionResult(text)
+  const items = result.status === 'SUCCESS' && result.content ? parseActionItems(result.content) : []
   const emptyMessage = getActionsEmptyMessage(sourceType)
 
   return (
-    <section
-      id="section-actions"
-      aria-labelledby="heading-actions"
-      className="scroll-mt-14"
-    >
+    <section id="section-actions" aria-labelledby="heading-actions" className="scroll-mt-14">
       <SectionLabel withAccentBar className="mb-5">
         <span id="heading-actions">Action Items</span>
       </SectionLabel>
 
-      {items.length === 0 ? (
+      {result.status === 'FAILED' ? (
+        <SectionErrorCard sectionTitle="Action Items" sectionResult={result} onRetry={onRetry} />
+      ) : items.length === 0 ? (
         <EmptyState message={emptyMessage} />
       ) : (
         <motion.div

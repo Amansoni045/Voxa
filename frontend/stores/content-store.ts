@@ -1,7 +1,16 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { ContentAnalysis, HistoryItem, QAPair, ContentType, ProcessingStatus } from '@/types/content'
+import { getSectionResult, type ContentAnalysis, type HistoryItem, type QAPair, type ContentType, type ProcessingStatus } from '@/types/content'
 import { generateId } from '@/lib/utils'
+
+export type RealStage =
+  | 'preparing'
+  | 'loading_model'
+  | 'transcribing'
+  | 'understanding'
+  | 'generating_report'
+  | 'done'
+  | 'error'
 
 interface ContentStore {
   // Current active content being processed or displayed
@@ -12,16 +21,24 @@ interface ContentStore {
   currentMeeting: ContentAnalysis | null
   setCurrentMeeting: (content: ContentAnalysis | null) => void
 
-  // Processing state & Honest Error tracking
+  // Processing state & Real-Time Pipeline Progress
   processingFile: string | null
   processingUrl: string | null
   processingSourceType: ContentType | null
   processingStatus: ProcessingStatus
   processingError: string | null
 
+  activeStage: RealStage
+  stageMessage: string
+  stageDetail: string | null
+  failedStage: string | null
+  isBackgrounded: boolean
+
   setProcessingFile: (name: string | null, sourceType?: ContentType) => void
   setProcessingUrl: (url: string | null, sourceType?: ContentType) => void
-  setProcessingError: (error: string | null) => void
+  setProcessingError: (error: string | null, failedStage?: string) => void
+  setActiveStage: (stage: RealStage, message: string, detail?: string) => void
+  setIsBackgrounded: (isBg: boolean) => void
   resetProcessing: () => void
 
   // Persistent History system
@@ -61,11 +78,25 @@ export const useContentStore = create<ContentStore>()(
     (set, get) => ({
       currentContent: null,
       setCurrentContent: (content) =>
-        set({ currentContent: content, currentMeeting: content, processingStatus: content ? 'done' : 'idle', processingError: null }),
+        set({
+          currentContent: content,
+          currentMeeting: content,
+          processingStatus: content ? 'done' : 'idle',
+          processingError: null,
+          activeStage: content ? 'done' : 'preparing',
+          isBackgrounded: false,
+        }),
 
       currentMeeting: null,
       setCurrentMeeting: (content) =>
-        set({ currentContent: content, currentMeeting: content, processingStatus: content ? 'done' : 'idle', processingError: null }),
+        set({
+          currentContent: content,
+          currentMeeting: content,
+          processingStatus: content ? 'done' : 'idle',
+          processingError: null,
+          activeStage: content ? 'done' : 'preparing',
+          isBackgrounded: false,
+        }),
 
       processingFile: null,
       processingUrl: null,
@@ -73,12 +104,23 @@ export const useContentStore = create<ContentStore>()(
       processingStatus: 'idle',
       processingError: null,
 
+      activeStage: 'preparing',
+      stageMessage: 'Initializing analysis...',
+      stageDetail: null,
+      failedStage: null,
+      isBackgrounded: false,
+
       setProcessingFile: (name, sourceType = 'recording') =>
         set({
           processingFile: name,
           processingSourceType: sourceType,
           processingStatus: name ? 'processing' : 'idle',
           processingError: null,
+          activeStage: 'preparing',
+          stageMessage: 'Receiving file...',
+          stageDetail: 'Preparing audio for processing',
+          failedStage: null,
+          isBackgrounded: false,
         }),
 
       setProcessingUrl: (url, sourceType = 'youtube') =>
@@ -87,13 +129,30 @@ export const useContentStore = create<ContentStore>()(
           processingSourceType: sourceType,
           processingStatus: url ? 'processing' : 'idle',
           processingError: null,
+          activeStage: 'preparing',
+          stageMessage: 'Fetching URL media...',
+          stageDetail: 'Downloading media stream',
+          failedStage: null,
+          isBackgrounded: false,
         }),
 
-      setProcessingError: (error) =>
+      setProcessingError: (error, failedStage = undefined) =>
         set({
           processingError: error,
           processingStatus: error ? 'error' : 'idle',
+          activeStage: 'error',
+          failedStage: failedStage ?? get().activeStage,
         }),
+
+      setActiveStage: (stage, message, detail) =>
+        set({
+          activeStage: stage,
+          stageMessage: message,
+          stageDetail: detail ?? null,
+          processingStatus: stage === 'done' ? 'done' : stage === 'error' ? 'error' : 'processing',
+        }),
+
+      setIsBackgrounded: (isBg) => set({ isBackgrounded: isBg }),
 
       resetProcessing: () =>
         set({
@@ -102,6 +161,11 @@ export const useContentStore = create<ContentStore>()(
           processingSourceType: null,
           processingStatus: 'idle',
           processingError: null,
+          activeStage: 'preparing',
+          stageMessage: '',
+          stageDetail: null,
+          failedStage: null,
+          isBackgrounded: false,
         }),
 
       history: [],
@@ -113,9 +177,12 @@ export const useContentStore = create<ContentStore>()(
           sourceType: content.sourceType,
           date: new Date().toISOString(),
           duration_seconds: content.metadata?.duration_seconds,
-          action_items_count: content.action_items
-            ? content.action_items.split('\n\n').filter(Boolean).length
-            : 0,
+          action_items_count: (() => {
+            const res = getSectionResult(content.action_items)
+            return res.status === 'SUCCESS' && res.content
+              ? res.content.split('\n\n').filter(Boolean).length
+              : 0
+          })(),
           channelName: content.metadata?.channelName,
           thumbnailUrl: content.metadata?.thumbnailUrl,
           originalUrl: content.metadata?.originalUrl,

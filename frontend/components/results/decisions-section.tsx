@@ -3,10 +3,11 @@
 import { motion } from 'framer-motion'
 import { SectionLabel } from '@/components/shared/section-label'
 import { EmptyState } from '@/components/shared/empty-state'
+import { SectionErrorCard } from '@/components/results/section-error-card'
 import { parseDecisions } from '@/lib/parsers'
 import { getDecisionsEmptyMessage } from '@/lib/content-helpers'
 import { staggerContainer, documentCascade } from '@/lib/motion'
-import type { Decision, ContentType } from '@/types/content'
+import { getSectionResult, type Decision, type ContentType, type SectionResult } from '@/types/content'
 
 function DecisionItem({ decision }: { decision: Decision }) {
   return (
@@ -33,26 +34,26 @@ function DecisionItem({ decision }: { decision: Decision }) {
 }
 
 interface DecisionsSectionProps {
-  text: string
+  text: SectionResult | string
   sourceType?: ContentType
   isVisible: boolean
+  onRetry?: () => void
 }
 
-export function DecisionsSection({ text, sourceType = 'recording', isVisible }: DecisionsSectionProps) {
-  const decisions = parseDecisions(text)
+export function DecisionsSection({ text, sourceType = 'recording', isVisible, onRetry }: DecisionsSectionProps) {
+  const result = getSectionResult(text)
+  const decisions = result.status === 'SUCCESS' && result.content ? parseDecisions(result.content) : []
   const emptyMessage = getDecisionsEmptyMessage(sourceType)
 
   return (
-    <section
-      id="section-decisions"
-      aria-labelledby="heading-decisions"
-      className="scroll-mt-14"
-    >
+    <section id="section-decisions" aria-labelledby="heading-decisions" className="scroll-mt-14">
       <SectionLabel withAccentBar className="mb-5">
         <span id="heading-decisions">Key Decisions</span>
       </SectionLabel>
 
-      {decisions.length === 0 ? (
+      {result.status === 'FAILED' ? (
+        <SectionErrorCard sectionTitle="Key Decisions" sectionResult={result} onRetry={onRetry} />
+      ) : decisions.length === 0 ? (
         <EmptyState message={emptyMessage} />
       ) : (
         <motion.div

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { ThemeProvider } from '@/components/layout/theme-provider'
+import { BackgroundProgressToast } from '@/components/processing/background-progress-toast'
 import './globals.css'
 
 const inter = Inter({
@@ -30,7 +31,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={inter.variable}>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          {children}
+          <BackgroundProgressToast />
+        </ThemeProvider>
       </body>
     </html>
   )

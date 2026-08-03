@@ -6,6 +6,11 @@ langchain-mistralai>=0.2.11
 mistralai>=1.9.10
 langchain_chroma
 
+# FastAPI Backend Server
+fastapi>=0.115.0
+uvicorn>=0.32.0
+python-multipart>=0.0.12
+
 # Vector Database
 chromadb>=1.0.20
 
@@ -26,6 +31,7 @@ yt-dlp>=2025.8.1
 
 # Audio Processing
 ffmpeg-python>=0.2.0
+imageio-ffmpeg>=0.6.0
 pydub>=0.25.1
 
 # PDF Export

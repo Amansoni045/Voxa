@@ -1,4 +1,5 @@
 import whisper
+import backend.shared.ffmpeg_utils  # Ensures ffmpeg is on PATH
 from backend.config.settings import Settings
 from backend.shared.logger import get_logger
 

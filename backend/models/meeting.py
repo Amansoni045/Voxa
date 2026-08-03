@@ -1,5 +1,54 @@
-from typing import Optional
+from enum import Enum
+from typing import Optional, Any
 from pydantic import BaseModel, Field
+
+class SectionStatus(str, Enum):
+    SUCCESS = "SUCCESS"
+    EMPTY = "EMPTY"
+    FAILED = "FAILED"
+
+class DeveloperDetails(BaseModel):
+    provider: str = "Mistral AI"
+    exception: str
+    code: Optional[int] = None
+    message: str
+
+class SectionResult(BaseModel):
+    status: SectionStatus
+    content: Optional[str] = None
+    reason: Optional[str] = None
+    developer_details: Optional[DeveloperDetails] = None
+
+    @classmethod
+    def ok(cls, content: str) -> "SectionResult":
+        if not content or not content.strip():
+            return cls(status=SectionStatus.EMPTY, content=None)
+        return cls(status=SectionStatus.SUCCESS, content=content.strip())
+
+    @classmethod
+    def empty(cls) -> "SectionResult":
+        return cls(status=SectionStatus.EMPTY, content=None)
+
+    @classmethod
+    def fail(cls, exception: Exception, provider: str = "Mistral AI") -> "SectionResult":
+        code = getattr(exception, "status_code", None) or getattr(exception, "code", None)
+        if not code and "429" in str(exception):
+            code = 429
+
+        exc_type = type(exception).__name__
+        msg = str(exception)
+
+        return cls(
+            status=SectionStatus.FAILED,
+            content=None,
+            reason="Analysis service temporarily unavailable.",
+            developer_details=DeveloperDetails(
+                provider=provider,
+                exception=exc_type,
+                code=code,
+                message=msg,
+            ),
+        )
 
 class MeetingMetadata(BaseModel):
     duration_seconds: Optional[float] = None
@@ -11,12 +60,10 @@ class MeetingMetadata(BaseModel):
 
 class MeetingAnalysis(BaseModel):
     title: str
-    summary: str
-    action_items: str
-    key_decisions: str
-    questions: str
-    risks: Optional[str] = None
-    next_steps: Optional[str] = None
+    summary: SectionResult
+    action_items: SectionResult
+    key_decisions: SectionResult
+    questions: SectionResult
     metadata: Optional[MeetingMetadata] = None
 
 class MeetingTitle(BaseModel):

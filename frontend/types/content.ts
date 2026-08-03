@@ -7,6 +7,22 @@ export type ContentType =
   | 'recording'
   | 'video'
 
+export type SectionStatus = 'SUCCESS' | 'EMPTY' | 'FAILED'
+
+export interface DeveloperDetails {
+  provider?: string
+  exception?: string
+  code?: number
+  message?: string
+}
+
+export interface SectionResult {
+  status: SectionStatus
+  content?: string | null
+  reason?: string
+  developer_details?: DeveloperDetails
+}
+
 export interface ContentMetadata {
   duration_seconds?: number
   detected_language?: string
@@ -25,14 +41,26 @@ export interface ContentAnalysis {
   id: string
   title: string
   sourceType: ContentType
-  summary: string
-  action_items: string
-  key_decisions: string
-  questions: string
-  risks?: string
-  next_steps?: string
+  summary: SectionResult | string
+  action_items: SectionResult | string
+  key_decisions: SectionResult | string
+  questions: SectionResult | string
+  risks?: SectionResult | string
+  next_steps?: SectionResult | string
   transcript?: string
   metadata?: ContentMetadata
+}
+
+// Helper to extract SectionResult safely from string or SectionResult object
+export function getSectionResult(val: SectionResult | string | undefined): SectionResult {
+  if (!val) return { status: 'EMPTY' }
+  if (typeof val === 'object' && 'status' in val) return val
+
+  const str = String(val).trim()
+  if (!str || str === 'No summary generated.' || (str.startsWith('No ') && str.endsWith(' found.'))) {
+    return { status: 'EMPTY' }
+  }
+  return { status: 'SUCCESS', content: str }
 }
 
 // Parsed / structured types for UI rendering

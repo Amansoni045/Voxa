@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Plus, Clock, AlertCircle, ArrowLeft } from 'lucide-react'
+import { Plus, Clock, AlertCircle, ArrowLeft, RefreshCw } from 'lucide-react'
 import { useContentStore } from '@/stores/content-store'
-import { MOCK_CONTENT } from '@/lib/api'
+import { MOCK_CONTENT, retryTranscriptSections } from '@/lib/api'
+import { getSectionResult } from '@/types/content'
 import { useScrollSpy } from '@/hooks/use-scroll-spy'
 import { TitleReveal } from '@/components/results/title-reveal'
 import { StickyHeader } from '@/components/results/sticky-header'
@@ -37,6 +38,7 @@ export default function AnalysisPage() {
 
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
+  const [isRetrying, setIsRetrying] = useState(false)
 
   // Restore content from history if available, or load demo mode ONLY if explicitly enabled
   useEffect(() => {
@@ -78,6 +80,34 @@ export default function AnalysisPage() {
     setCurrentContent(null)
     router.push('/')
   }, [setCurrentContent, router])
+
+  const isAnySectionFailed = useMemo(() => {
+    if (!content) return false
+    const s = getSectionResult(content.summary).status === 'FAILED'
+    const d = getSectionResult(content.key_decisions).status === 'FAILED'
+    const a = getSectionResult(content.action_items).status === 'FAILED'
+    const q = getSectionResult(content.questions).status === 'FAILED'
+    return s || d || a || q
+  }, [content])
+
+  const handleRetryAllFailedSections = async () => {
+    if (!content?.transcript) return
+    setIsRetrying(true)
+    try {
+      const updated = await retryTranscriptSections(content.transcript)
+      setCurrentContent({
+        ...content,
+        summary: updated.summary,
+        key_decisions: updated.key_decisions,
+        action_items: updated.action_items,
+        questions: updated.questions,
+      })
+    } catch (err) {
+      console.error('Failed to retry sections:', err)
+    } finally {
+      setIsRetrying(false)
+    }
+  }
 
   // Global Keyboard Shortcuts
   useEffect(() => {
@@ -200,12 +230,40 @@ export default function AnalysisPage() {
           variants={staggerContainer}
           className="flex flex-col"
         >
+          {/* Multi-Section Failure Notification Banner */}
+          {isAnySectionFailed && (
+            <motion.div
+              variants={documentCascade}
+              className="p-4 mb-8 rounded-[16px] border border-amber-500/30 bg-amber-500/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+            >
+              <div className="flex items-center gap-3">
+                <AlertCircle className="text-amber-500 flex-shrink-0" size={20} />
+                <div className="text-[14px]" style={{ color: 'var(--color-text-primary)' }}>
+                  <p className="font-semibold">Part of your analysis couldn't be completed</p>
+                  <p className="text-[13px] text-[var(--color-text-secondary)]">
+                    We saved your transcript. You can retry the missing sections without re-transcribing audio.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={handleRetryAllFailedSections}
+                disabled={isRetrying}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[13px] font-medium bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-all flex-shrink-0"
+              >
+                <RefreshCw size={14} className={isRetrying ? 'animate-spin' : ''} />
+                <span>{isRetrying ? 'Retrying analysis...' : 'Retry Failed Sections'}</span>
+              </button>
+            </motion.div>
+          )}
+
           {/* Overview */}
           <motion.div variants={documentCascade}>
             <OverviewSection
               summary={content.summary}
               sourceType={content.sourceType}
               isVisible={titleRevealComplete}
+              onRetry={handleRetryAllFailedSections}
             />
           </motion.div>
 
@@ -215,6 +273,7 @@ export default function AnalysisPage() {
               text={content.key_decisions}
               sourceType={content.sourceType}
               isVisible={titleRevealComplete}
+              onRetry={handleRetryAllFailedSections}
             />
           </motion.div>
 
@@ -225,6 +284,7 @@ export default function AnalysisPage() {
               contentId={content.id}
               sourceType={content.sourceType}
               isVisible={titleRevealComplete}
+              onRetry={handleRetryAllFailedSections}
             />
           </motion.div>
 
@@ -233,6 +293,7 @@ export default function AnalysisPage() {
             <QuestionsSection
               text={content.questions ?? ''}
               isVisible={titleRevealComplete}
+              onRetry={handleRetryAllFailedSections}
             />
           </motion.div>
 

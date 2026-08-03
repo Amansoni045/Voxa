@@ -9,7 +9,7 @@ import { UploadContainer } from '@/components/upload/upload-container'
 import { HistoryDrawer } from '@/components/history/history-drawer'
 import { CommandPalette } from '@/components/shared/command-palette'
 import { useContentStore } from '@/stores/content-store'
-import { analyzeContent, analyzeContentUrl } from '@/lib/api'
+import { analyzeContentStream, analyzeContentUrlStream } from '@/lib/api'
 import { detectSourceFromFile, detectSourceFromUrl } from '@/lib/source-detector'
 import { getHeroHeadline, getHeroSubheading } from '@/lib/content-helpers'
 import { staggerContainer, fadeInUp } from '@/lib/motion'
@@ -19,6 +19,7 @@ export default function HomePage() {
   const setCurrentContent = useContentStore((s) => s.setCurrentContent)
   const setProcessingFile = useContentStore((s) => s.setProcessingFile)
   const setProcessingUrl = useContentStore((s) => s.setProcessingUrl)
+  const setActiveStage = useContentStore((s) => s.setActiveStage)
   const setProcessingError = useContentStore((s) => s.setProcessingError)
   const addHistoryItem = useContentStore((s) => s.addHistoryItem)
   const history = useContentStore((s) => s.history)
@@ -34,16 +35,23 @@ export default function HomePage() {
       router.push('/processing')
 
       try {
-        const result = await analyzeContent(file)
+        const result = await analyzeContentStream(file, (progress) => {
+          if (progress.stage === 'error') {
+            setProcessingError(progress.message, progress.stage)
+          } else {
+            setActiveStage(progress.stage, progress.message, progress.detail)
+          }
+        })
         setCurrentContent(result)
         addHistoryItem(result)
       } catch (err: any) {
         setProcessingError(
-          err.message || "We couldn't analyze this file. Please make sure the backend is running."
+          err.message || "We couldn't analyze this file. Please make sure the Voxa backend is running.",
+          'preparing'
         )
       }
     },
-    [router, setCurrentContent, setProcessingFile, setProcessingError, addHistoryItem]
+    [router, setCurrentContent, setProcessingFile, setActiveStage, setProcessingError, addHistoryItem]
   )
 
   const handleUrl = useCallback(
@@ -54,16 +62,23 @@ export default function HomePage() {
       router.push('/processing')
 
       try {
-        const result = await analyzeContentUrl(url)
+        const result = await analyzeContentUrlStream(url, (progress) => {
+          if (progress.stage === 'error') {
+            setProcessingError(progress.message, progress.stage)
+          } else {
+            setActiveStage(progress.stage, progress.message, progress.detail)
+          }
+        })
         setCurrentContent(result)
         addHistoryItem(result)
       } catch (err: any) {
         setProcessingError(
-          err.message || "We couldn't analyze this link. Please check the URL or backend connection."
+          err.message || "We couldn't analyze this link. Please check the URL or backend connection.",
+          'preparing'
         )
       }
     },
-    [router, setCurrentContent, setProcessingUrl, setProcessingError, addHistoryItem]
+    [router, setCurrentContent, setProcessingUrl, setActiveStage, setProcessingError, addHistoryItem]
   )
 
   // Global Keyboard Shortcuts
