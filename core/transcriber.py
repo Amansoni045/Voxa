@@ -1,6 +1,8 @@
 import whisper
 import os
 import time
+import shutil
+import hashlib
 import requests
 from pydub import AudioSegment
 from concurrent.futures import ThreadPoolExecutor
@@ -127,16 +129,30 @@ def transcribe_chunk(chunk_path: str, language: str = "english") -> str:
     return transcribe_chunk_whisper(chunk_path)
 
 
+def _get_cache_dir(chunks: list) -> str:
+    hash_input = "".join(chunks).encode("utf-8")
+    session_id = hashlib.md5(hash_input).hexdigest()
+    cache_dir = os.path.join("downloads", ".cache", session_id)
+    os.makedirs(cache_dir, exist_ok=True)
+    return cache_dir
+
+
 def _transcribe_single_chunk_worker(chunk_info: tuple) -> str:
-    """
-    Helper function to process a single chunk within a thread worker.
-    Receives a tuple of (index, total_chunks, chunk_path, language).
-    Returns transcribed text or an empty string on error.
-    """
-    i, total, chunk, language = chunk_info
+    i, total, chunk, language, cache_dir = chunk_info
+    cache_file = os.path.join(cache_dir, f"chunk_{i}.txt")
+
+    if os.path.exists(cache_file):
+        print(f"Loading chunk {i + 1}/{total} from checkpoint...")
+        with open(cache_file, "r", encoding="utf-8") as f:
+            return f.read()
+
     print(f"Transcribing chunk {i + 1}/{total}...")
     try:
-        return transcribe_chunk(chunk, language=language)
+        text = transcribe_chunk(chunk, language=language)
+        if text:
+            with open(cache_file, "w", encoding="utf-8") as f:
+                f.write(text)
+        return text
     except Exception as e:
         print(f"Error transcribing chunk {i + 1}/{total} ({chunk}): {e}")
         return ""
@@ -149,11 +165,17 @@ def transcribe_all(chunks: list, language: str = "english") -> str:
     engine = "Sarvam AI" if language.lower() == "hinglish" else "Whisper"
     print(f"Using {engine} for transcription.")
 
+    cache_dir = _get_cache_dir(chunks)
+
     max_workers = min(4, len(chunks))
-    tasks = [(i, len(chunks), chunk, language) for i, chunk in enumerate(chunks)]
+    tasks = [(i, len(chunks), chunk, language, cache_dir) for i, chunk in enumerate(chunks)]
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         results = list(executor.map(_transcribe_single_chunk_worker, tasks))
+
+    successful = all(res.strip() != "" for res in results)
+    if successful and os.path.exists(cache_dir):
+        shutil.rmtree(cache_dir)
 
     print("Transcription complete.")
 
