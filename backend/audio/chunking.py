@@ -1,0 +1,24 @@
+from pydub import AudioSegment
+from backend.audio.youtube import download_youtube_audio
+from backend.audio.converter import convert_to_wav
+from backend.config.constants import AUDIO_CHUNK_MINUTES
+
+def chunk_audio(wav_path: str, chunk_minutes: int = AUDIO_CHUNK_MINUTES) -> list:
+    audio = AudioSegment.from_wav(wav_path)
+    chunk_ms = chunk_minutes * 60 * 1000
+
+    chunks = []
+    for i, start in enumerate(range(0, len(audio), chunk_ms)):
+        chunk = audio[start: start + chunk_ms]
+        chunk_path = f"{wav_path}chunk_{i}.wav"
+        chunk.export(chunk_path, format="wav")
+        chunks.append(chunk_path)
+    return chunks
+
+def process_audio_input(source: str) -> list:
+    if source.startswith("http://") or source.startswith("https://"):
+        wav_path = download_youtube_audio(source)
+    else:
+        wav_path = convert_to_wav(source)
+
+    return chunk_audio(wav_path)
