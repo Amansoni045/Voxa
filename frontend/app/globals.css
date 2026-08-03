@@ -1,0 +1,200 @@
+@import "tailwindcss";
+
+/* ─── Font ─────────────────────────────────────────────── */
+@layer base {
+  :root {
+    --font-inter: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+}
+
+/* ─── Design Tokens (Light) ─────────────────────────────── */
+:root {
+  /* Backgrounds */
+  --color-bg: #FAFAFA;
+  --color-header-bg: rgba(250, 250, 250, 0.85);
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #F6F6F6;
+  --color-zone: #F6F6F6;
+
+  /* Borders */
+  --color-border: #E8E8E8;
+  --color-border-hover: #C8C8C8;
+  --color-separator: #F0F0F0;
+
+  /* Text */
+  --color-text-primary: #111111;
+  --color-text-secondary: #6B7280;
+  --color-text-tertiary: #9CA3AF;
+  --color-text-quarternary: #C4C4C4;
+
+  /* Accent */
+  --color-accent: #2563EB;
+  --color-accent-hover: #1D4ED8;
+  --color-accent-light: #EFF6FF;
+  --color-accent-border: #BFDBFE;
+  --color-accent-muted: rgba(37, 99, 235, 0.08);
+
+  /* Semantic */
+  --color-success: #059669;
+  --color-success-light: #ECFDF5;
+  --color-error: #DC2626;
+  --color-error-light: #FEF2F2;
+  --color-warning: #D97706;
+
+  /* Shadow */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.07), 0 4px 8px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.08), 0 8px 16px rgba(0, 0, 0, 0.04);
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.10), 0 2px 8px rgba(0, 0, 0, 0.06);
+
+  /* Radius */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+
+  /* Motion */
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 350ms;
+}
+
+/* ─── Design Tokens (Dark) ──────────────────────────────── */
+.dark {
+  --color-bg: #0A0A0A;
+  --color-header-bg: rgba(10, 10, 10, 0.85);
+  --color-surface: #141414;
+  --color-surface-hover: #1A1A1A;
+  --color-zone: #161616;
+
+  --color-border: #222222;
+  --color-border-hover: #333333;
+  --color-separator: #1C1C1C;
+
+  --color-text-primary: #F5F5F5;
+  --color-text-secondary: #8B8B8B;
+  --color-text-tertiary: #555555;
+  --color-text-quarternary: #333333;
+
+  --color-accent: #3B82F6;
+  --color-accent-hover: #2563EB;
+  --color-accent-light: #0F1F3D;
+  --color-accent-border: #1D4ED8;
+  --color-accent-muted: rgba(59, 130, 246, 0.10);
+
+  --color-success: #10B981;
+  --color-success-light: #022C22;
+  --color-error: #F87171;
+  --color-error-light: #2D0A0A;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* ─── Base ───────────────────────────────────────────────── */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: var(--font-inter);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text-primary);
+    min-height: 100dvh;
+    line-height: 1.5;
+  }
+
+  ::selection {
+    background-color: var(--color-accent-light);
+    color: var(--color-accent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-border-hover); }
+}
+
+/* ─── Utilities ──────────────────────────────────────────── */
+@layer utilities {
+  .text-primary { color: var(--color-text-primary); }
+  .text-secondary { color: var(--color-text-secondary); }
+  .text-tertiary { color: var(--color-text-tertiary); }
+  .text-quarternary { color: var(--color-text-quarternary); }
+  .text-accent { color: var(--color-accent); }
+  .text-success { color: var(--color-success); }
+  .text-error { color: var(--color-error); }
+
+  .bg-voxa { background-color: var(--color-bg); }
+  .bg-surface { background-color: var(--color-surface); }
+  .bg-zone { background-color: var(--color-zone); }
+  .bg-accent-light { background-color: var(--color-accent-light); }
+  .bg-success-light { background-color: var(--color-success-light); }
+
+  .border-voxa { border-color: var(--color-border); }
+  .border-accent { border-color: var(--color-accent); }
+  .border-separator { border-color: var(--color-separator); }
+
+  .shadow-voxa-sm { box-shadow: var(--shadow-sm); }
+  .shadow-voxa-md { box-shadow: var(--shadow-md); }
+  .shadow-voxa-lg { box-shadow: var(--shadow-lg); }
+  .shadow-voxa-popover { box-shadow: var(--shadow-popover); }
+
+  /* Upload zone breathing keyframe */
+  @keyframes zone-breathe {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 1; }
+  }
+
+  .zone-breathe {
+    animation: zone-breathe 3s ease-in-out infinite;
+  }
+
+  /* Stage bar flash */
+  @keyframes bar-flash {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  .bar-flash {
+    animation: bar-flash 700ms ease-out forwards;
+  }
+
+  /* Warm ambient shift */
+  @keyframes ambient-warm {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  /* Reduced motion overrides */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
