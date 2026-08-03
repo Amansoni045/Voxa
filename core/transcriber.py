@@ -1,5 +1,6 @@
 import whisper
 import os
+import time
 import requests
 from pydub import AudioSegment
 from concurrent.futures import ThreadPoolExecutor
@@ -37,27 +38,53 @@ def transcribe_chunk_whisper(chunk_path: str) -> str:
     return result["text"]  
 
 
-def _send_to_sarvam(piece_path: str) -> str:
-    """Send one ≤30s WAV file to Sarvam and return the English transcript."""
+def _send_to_sarvam(piece_path: str, max_retries: int = 3) -> str:
+    """
+    Send one ≤30s WAV file to Sarvam with retry logic and exponential backoff.
+    Retries only temporary network errors and server-side errors (429, 5xx).
+    """
     headers = {"api-subscription-key": SARVAM_API_KEY}
 
-    with open(piece_path, "rb") as f:
-        files = {"file": (os.path.basename(piece_path), f, "audio/wav")}
-        data = {"model": SARVAM_MODEL, "with_diarization": "false"}
-        response = requests.post(
-            SARVAM_STT_TRANSLATE_URL,
-            headers=headers,
-            files=files,
-            data=data,
-            timeout=120,
-        )
+    for attempt in range(1, max_retries + 1):
+        try:
+            with open(piece_path, "rb") as f:
+                files = {"file": (os.path.basename(piece_path), f, "audio/wav")}
+                data = {"model": SARVAM_MODEL, "with_diarization": "false"}
+                response = requests.post(
+                    SARVAM_STT_TRANSLATE_URL,
+                    headers=headers,
+                    files=files,
+                    data=data,
+                    timeout=120,
+                )
 
-    if not response.ok:
-        print(f"\n Sarvam returned {response.status_code}")
-        print(f"Response body: {response.text}\n")
-        response.raise_for_status()
+            if response.status_code in (400, 401, 403):
+                print(f"Permanent client error (HTTP {response.status_code}). Not retrying.")
+                response.raise_for_status()
 
-    return response.json().get("transcript", "")
+            if response.status_code in (429, 500, 502, 503, 504):
+                response.raise_for_status()
+
+            if not response.ok:
+                response.raise_for_status()
+
+            return response.json().get("transcript", "")
+
+        except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as e:
+            is_retriable = False
+            if isinstance(e, (requests.Timeout, requests.ConnectionError)):
+                is_retriable = True
+            elif isinstance(e, requests.HTTPError) and e.response is not None:
+                if e.response.status_code in (429, 500, 502, 503, 504):
+                    is_retriable = True
+
+            if is_retriable and attempt < max_retries:
+                delay = 2 ** (attempt - 1)
+                print(f"Temporary error ({e}). Retrying attempt {attempt}/{max_retries} after {delay}s delay...")
+                time.sleep(delay)
+            else:
+                print(f"Failed to transcribe piece {piece_path} after {attempt} attempt(s): {e}")
+                raise e
 
 
 def transcribe_chunk_sarvam(chunk_path: str) -> str:
