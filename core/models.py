@@ -1,4 +1,4 @@
-from typing import Any, Optional, List, Generic, TypeVar
+from typing import Any, Optional, List, Dict, Generic, TypeVar
 from pydantic import BaseModel, Field
 
 T = TypeVar("T")
@@ -35,9 +35,20 @@ class DecisionsResponse(BaseModel):
 class OpenQuestionsResponse(BaseModel):
     open_questions: str = Field(..., description="Unresolved questions, blockers, or follow-ups")
 
+class MeetingMetadata(BaseModel):
+    duration_seconds: Optional[float] = None
+    detected_language: Optional[str] = None
+    transcription_engine: Optional[str] = None
+    generation_timestamp: Optional[str] = None
+    transcript_chunks_count: Optional[int] = None
+    processing_time_seconds: Optional[float] = None
+
 class MeetingAnalysisResponse(BaseModel):
     title: str
     summary: str
     action_items: str
     key_decisions: str
     questions: str
+    risks: Optional[str] = None
+    next_steps: Optional[str] = None
+    metadata: Optional[MeetingMetadata] = None
