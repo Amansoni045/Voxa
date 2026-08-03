@@ -10,6 +10,7 @@ from langchain_mistralai import ChatMistralAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from core.summarize import summarize, generate_title
+from core.models import APIResponse, MeetingAnalysisResponse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -265,3 +266,29 @@ def process_transcript_parallel(transcript: str) -> Dict[str, Any]:
     )
 
     return parallel_pipeline.invoke(transcript)
+
+
+def process_transcript_api(transcript: str) -> Dict[str, Any]:
+    """Execute analysis and return standardized API response format."""
+    try:
+        if not transcript or not transcript.strip():
+            return APIResponse[MeetingAnalysisResponse].fail(
+                message="Transcript text is empty or invalid.",
+                error_type="ValueError"
+            ).model_dump()
+
+        raw_data = process_transcript_parallel(transcript)
+        analysis = MeetingAnalysisResponse(
+            title=raw_data.get("title", "Untitled Meeting"),
+            summary=raw_data.get("summary", ""),
+            action_items=raw_data.get("action_items", "No action items found."),
+            key_decisions=raw_data.get("key_decisions", "No key decisions found."),
+            questions=raw_data.get("questions", "No open questions found.")
+        )
+        return APIResponse[MeetingAnalysisResponse].ok(analysis).model_dump()
+    except Exception as e:
+        logger.exception("Error processing transcript in API pipeline")
+        return APIResponse[MeetingAnalysisResponse].fail(
+            message=str(e),
+            error_type=type(e).__name__
+        ).model_dump()
