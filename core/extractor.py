@@ -1,13 +1,15 @@
 import logging
 import os
 import time
-from typing import List
+from typing import List, Dict, Any
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableLambda, RunnablePassthrough, RunnableSequence
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough, RunnableSequence, RunnableParallel
 from langchain_mistralai import ChatMistralAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from core.summarize import summarize, generate_title
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -239,3 +241,27 @@ No open questions found.
     if _is_empty_or_negative(res):
         return "No open questions found."
     return res
+
+
+def _safe_run(func, transcript: str, fallback: str = "") -> str:
+    try:
+        return func(transcript)
+    except Exception as e:
+        logger.error("Task execution error in parallel pipeline: %s", e)
+        return fallback
+
+
+def process_transcript_parallel(transcript: str) -> Dict[str, Any]:
+    """
+    Execute summary, action items, decisions, questions, and title extraction in parallel.
+    Uses RunnableParallel to run independent tasks concurrently.
+    """
+    parallel_pipeline = RunnableParallel(
+        summary=RunnableLambda(lambda t: _safe_run(summarize, t, fallback="")),
+        action_items=RunnableLambda(lambda t: _safe_run(extract_action_items, t, fallback="No action items found.")),
+        key_decisions=RunnableLambda(lambda t: _safe_run(extract_key_decisions, t, fallback="No key decisions found.")),
+        questions=RunnableLambda(lambda t: _safe_run(extract_questions, t, fallback="No open questions found.")),
+        title=RunnableLambda(lambda t: _safe_run(generate_title, t, fallback="Untitled Meeting")),
+    )
+
+    return parallel_pipeline.invoke(transcript)
