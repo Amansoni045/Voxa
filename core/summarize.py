@@ -4,24 +4,23 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_text_splitters import RecursiveCharacterTextSplitter 
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda 
 
-import os 
+from core.config import Config
 
 def get_llm():
     return ChatMistralAI(
-        model = "mistral-small-latest",
-        mistral_api_key = os.getenv("MISTRAL_API_KEY"),
-        temperature = 0.3
+        model="mistral-small-latest",
+        mistral_api_key=Config.MISTRAL_API_KEY,
+        temperature=0.3
     )
 
 def split_transcript(transcript: str) -> list:
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size = 3000,
-        chunk_overlap = 200
+        chunk_size=Config.SUMMARIZE_CHUNK_SIZE,
+        chunk_overlap=Config.SUMMARIZE_CHUNK_OVERLAP
     )
-
     return splitter.split_text(transcript)
 
-def summarize(transcript : str) -> str:
+def summarize(transcript: str) -> str:
     if not transcript or not transcript.strip():
         return ""
 
@@ -55,7 +54,6 @@ def summarize(transcript : str) -> str:
 
     current_summaries = [map_chain.invoke({"text": chunk}) for chunk in chunks]
 
-    # Iteratively reduce summaries in batches until only one final summary remains
     batch_size = 8
     while len(current_summaries) > 1:
         next_level = []
@@ -68,11 +66,11 @@ def summarize(transcript : str) -> str:
 
     return current_summaries[0]
 
-def generate_title(transcipt : str) -> str:
+def generate_title(transcipt: str) -> str:
     llm = get_llm()
 
     title_chain = (
-        RunnablePassthrough() | RunnableLambda(lambda x:{"text":x}) | 
+        RunnablePassthrough() | RunnableLambda(lambda x: {"text": x}) | 
         ChatPromptTemplate.from_messages([
              (
                 "system",
@@ -82,7 +80,7 @@ def generate_title(transcipt : str) -> str:
             ("human", "{text}"),
         ])
         | llm
-        |StrOutputParser()
+        | StrOutputParser()
     )
 
     return title_chain.invoke(transcipt[:2000])

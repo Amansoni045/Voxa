@@ -3,32 +3,22 @@ import os
 import time
 import shutil
 import hashlib
+import logging
 import requests
 from pydub import AudioSegment
 from concurrent.futures import ThreadPoolExecutor
 
-# Sarvam's sync STT-translate API rejects audio longer than 30s.
-# We slice each chunk into 25s pieces (with a 5s safety margin) before sending.
-SARVAM_PIECE_SECONDS = 25
+from core.config import Config
 
-
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
-
-
-SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
-SARVAM_STT_TRANSLATE_URL = "https://api.sarvam.ai/speech-to-text-translate"
-SARVAM_MODEL = os.getenv("SARVAM_STT_MODEL", "saaras:v2.5")
-
+logger = logging.getLogger("voxa.transcriber")
 _model = None
 
 def load_model():
-
     global _model  
-
     if _model is None: 
-        print(f"Loading Whisper model: {WHISPER_MODEL} ...")
-        _model = whisper.load_model(WHISPER_MODEL) 
-        print("Whisper model loaded.")
+        logger.info("Loading Whisper model: %s...", Config.WHISPER_MODEL)
+        _model = whisper.load_model(Config.WHISPER_MODEL) 
+        logger.info("Whisper model loaded.")
     return _model 
 
 
@@ -41,40 +31,38 @@ def detect_language(sample_chunk_path: str) -> tuple[str, float]:
     _, probs = model.detect_language(mel)
     detected_lang = max(probs, key=probs.get)
     confidence = probs.get(detected_lang, 0.0)
-    print(f"Detected language: {detected_lang} (confidence: {confidence:.2f})")
+    logger.info("Detected language: %s (confidence: %.2f)", detected_lang, confidence)
     return detected_lang, confidence
 
 
 def transcribe_chunk_whisper(chunk_path: str) -> str:
-
     model = load_model()  
-
     result = model.transcribe(chunk_path, task="transcribe")  
     return result["text"]  
 
 
-def _send_to_sarvam(piece_path: str, max_retries: int = 3) -> str:
-    """
-    Send one ≤30s WAV file to Sarvam with retry logic and exponential backoff.
-    Retries only temporary network errors and server-side errors (429, 5xx).
-    """
-    headers = {"api-subscription-key": SARVAM_API_KEY}
+def _send_to_sarvam(piece_path: str, max_retries: int = Config.MAX_RETRIES) -> str:
+    """Send one ≤30s WAV file to Sarvam with retry logic and exponential backoff."""
+    if not Config.SARVAM_API_KEY:
+        raise RuntimeError("SARVAM_API_KEY is not set in environment.")
+
+    headers = {"api-subscription-key": Config.SARVAM_API_KEY}
 
     for attempt in range(1, max_retries + 1):
         try:
             with open(piece_path, "rb") as f:
                 files = {"file": (os.path.basename(piece_path), f, "audio/wav")}
-                data = {"model": SARVAM_MODEL, "with_diarization": "false"}
+                data = {"model": Config.SARVAM_MODEL, "with_diarization": "false"}
                 response = requests.post(
-                    SARVAM_STT_TRANSLATE_URL,
+                    Config.SARVAM_STT_TRANSLATE_URL,
                     headers=headers,
                     files=files,
                     data=data,
-                    timeout=120,
+                    timeout=Config.REQUEST_TIMEOUT,
                 )
 
             if response.status_code in (400, 401, 403):
-                print(f"Permanent client error (HTTP {response.status_code}). Not retrying.")
+                logger.error("Permanent client error (HTTP %d). Not retrying.", response.status_code)
                 response.raise_for_status()
 
             if response.status_code in (429, 500, 502, 503, 504):
@@ -95,23 +83,16 @@ def _send_to_sarvam(piece_path: str, max_retries: int = 3) -> str:
 
             if is_retriable and attempt < max_retries:
                 delay = 2 ** (attempt - 1)
-                print(f"Temporary error ({e}). Retrying attempt {attempt}/{max_retries} after {delay}s delay...")
+                logger.warning("Temporary error (%s). Retrying attempt %d/%d after %ds delay...", e, attempt, max_retries, delay)
                 time.sleep(delay)
             else:
-                print(f"Failed to transcribe piece {piece_path} after {attempt} attempt(s): {e}")
+                logger.error("Failed to transcribe piece %s after %d attempt(s): %s", piece_path, attempt, e)
                 raise e
 
 
 def transcribe_chunk_sarvam(chunk_path: str) -> str:
-    """
-    Sarvam sync API only accepts ≤30s audio. We split this chunk into
-    25-second pieces, send each separately, and join the transcripts.
-    """
-    if not SARVAM_API_KEY:
-        raise RuntimeError("SARVAM_API_KEY is not set in environment / .env")
-
     audio = AudioSegment.from_wav(chunk_path)
-    piece_ms = SARVAM_PIECE_SECONDS * 1000
+    piece_ms = Config.SARVAM_PIECE_SECONDS * 1000
 
     full_text = ""
     total_pieces = (len(audio) + piece_ms - 1) // piece_ms
@@ -122,7 +103,7 @@ def transcribe_chunk_sarvam(chunk_path: str) -> str:
         piece.export(piece_path, format="wav")
 
         try:
-            print(f"  → Sarvam piece {i + 1}/{total_pieces} ...")
+            logger.info("Sarvam piece %d/%d...", i + 1, total_pieces)
             full_text += _send_to_sarvam(piece_path) + " "
         finally:
             if os.path.exists(piece_path):
@@ -132,11 +113,6 @@ def transcribe_chunk_sarvam(chunk_path: str) -> str:
 
 
 def transcribe_chunk(chunk_path: str, language: str = "english") -> str:
-    """
-    Route one chunk to Whisper or Sarvam depending on language choice.
-    - english  → Whisper (local model)
-    - hinglish / non-english → Sarvam (translates to English while transcribing)
-    """
     if language.lower() in ("hinglish", "sarvam"):
         return transcribe_chunk_sarvam(chunk_path)
     return transcribe_chunk_whisper(chunk_path)
@@ -145,7 +121,7 @@ def transcribe_chunk(chunk_path: str, language: str = "english") -> str:
 def _get_cache_dir(chunks: list) -> str:
     hash_input = "".join(chunks).encode("utf-8")
     session_id = hashlib.md5(hash_input).hexdigest()
-    cache_dir = os.path.join("downloads", ".cache", session_id)
+    cache_dir = os.path.join(Config.DOWNLOAD_DIR, ".cache", session_id)
     os.makedirs(cache_dir, exist_ok=True)
     return cache_dir
 
@@ -155,11 +131,11 @@ def _transcribe_single_chunk_worker(chunk_info: tuple) -> str:
     cache_file = os.path.join(cache_dir, f"chunk_{i}.txt")
 
     if os.path.exists(cache_file):
-        print(f"Loading chunk {i + 1}/{total} from checkpoint...")
+        logger.info("Loading chunk %d/%d from checkpoint...", i + 1, total)
         with open(cache_file, "r", encoding="utf-8") as f:
             return f.read()
 
-    print(f"Transcribing chunk {i + 1}/{total}...")
+    logger.info("Transcribing chunk %d/%d...", i + 1, total)
     try:
         text = transcribe_chunk(chunk, language=language)
         if text:
@@ -167,7 +143,7 @@ def _transcribe_single_chunk_worker(chunk_info: tuple) -> str:
                 f.write(text)
         return text
     except Exception as e:
-        print(f"Error transcribing chunk {i + 1}/{total} ({chunk}): {e}")
+        logger.error("Error transcribing chunk %d/%d (%s): %s", i + 1, total, chunk, e)
         return ""
 
 
@@ -186,11 +162,10 @@ def transcribe_all(chunks: list, language: str = "auto") -> str:
     else:
         engine = "Sarvam AI" if language.lower() in ("hinglish", "sarvam") else "Whisper"
 
-    print(f"Using {engine} for transcription.")
-
+    logger.info("Using %s for transcription.", engine)
     cache_dir = _get_cache_dir(chunks)
 
-    max_workers = min(4, len(chunks))
+    max_workers = min(Config.MAX_WORKERS, len(chunks))
     tasks = [(i, len(chunks), chunk, language, cache_dir) for i, chunk in enumerate(chunks)]
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -200,6 +175,5 @@ def transcribe_all(chunks: list, language: str = "auto") -> str:
     if successful and os.path.exists(cache_dir):
         shutil.rmtree(cache_dir)
 
-    print("Transcription complete.")
-
+    logger.info("Transcription complete.")
     return " ".join([text for text in results if text]).strip()
