@@ -4,6 +4,7 @@ langchain-core>=0.3.74
 langchain-community>=0.3.29
 langchain-mistralai>=0.2.11
 mistralai>=1.9.10
+langchain_chroma
 
 # Vector Database
 chromadb>=1.0.20
