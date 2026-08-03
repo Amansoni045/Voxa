@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+import shutil
 import asyncio
 import tempfile
 from typing import Optional, AsyncGenerator, Any
@@ -9,7 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-import backend.shared.ffmpeg_utils  # Ensures ffmpeg is on PATH for whisper & pydub
+import backend.shared.ffmpeg_utils  
+from backend.shared.ffmpeg_utils import is_ffmpeg_available
+from backend.shared.cleanup import cleanup_files, purge_old_temporary_files
 from backend.app import process_meeting
 from backend.audio.youtube import download_youtube_audio
 from backend.llm.analysis import process_transcript_api
@@ -19,11 +22,10 @@ logger = get_logger("voxa.main")
 
 app = FastAPI(
     title="Voxa V2 API",
-    description="Universal Content Distillation Engine Backend API with Section Status Contract",
+    description="Universal Content Distillation Engine Backend API with Guaranteed Temporary File Lifecycle",
     version="2.0.0",
 )
 
-# Enable CORS for local frontend dev server
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -31,6 +33,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup_routine():
+    try:
+        import torch
+        torch.set_num_threads(min(4, os.cpu_count() or 2))
+    except Exception:
+        pass
+
+    try:
+        from backend.config.constants import DOWNLOAD_DIR
+        purge_old_temporary_files(tempfile.gettempdir(), max_age_seconds=1800)
+        purge_old_temporary_files(DOWNLOAD_DIR, max_age_seconds=1800)
+    except Exception as e:
+        logger.warning("Startup disk purge error: %s", e)
 
 
 class URLAnalyzeRequest(BaseModel):
@@ -54,7 +72,7 @@ def format_sse(event: str, data: dict) -> str:
 def format_section_response(val: Any) -> dict:
     if isinstance(val, dict) and "status" in val:
         return val
-    if not val or "No " in str(val) and " found." in str(val):
+    if not val or ("No " in str(val) and " found." in str(val)):
         return {"status": "EMPTY"}
     return {"status": "SUCCESS", "content": str(val)}
 
@@ -91,15 +109,28 @@ def format_analysis_payload(res: dict, source_type: str, title_default: str, ext
 @app.get("/")
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "version": "2.0.0", "service": "Voxa V2 API"}
+    ffmpeg_ok = is_ffmpeg_available()
+    return {
+        "status": "ok" if ffmpeg_ok else "degraded",
+        "version": "2.0.0",
+        "service": "Voxa V2 API",
+        "ffmpeg_available": ffmpeg_ok,
+    }
 
 
 @app.post("/analyze")
 async def analyze_file(file: UploadFile = File(...)):
     """
     Standard HTTP endpoint for file analysis.
+    Guarantees temporary upload directory is deleted in a finally block.
     """
-    temp_dir = tempfile.mkdtemp()
+    if not is_ffmpeg_available():
+        raise HTTPException(
+            status_code=500,
+            detail="FFmpeg binary is unavailable on the backend system path."
+        )
+
+    temp_dir = tempfile.mkdtemp(prefix="voxa_upload_")
     file_path = os.path.join(temp_dir, file.filename or "recording.mp3")
 
     try:
@@ -112,14 +143,23 @@ async def analyze_file(file: UploadFile = File(...)):
     except Exception as e:
         logger.exception("Error in /analyze endpoint")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cleanup_files([temp_dir])
 
 
 @app.post("/analyze/stream")
 async def analyze_file_stream(file: UploadFile = File(...)):
     """
     Real-time Server-Sent Events (SSE) stream for file processing pipeline.
+    Guarantees temporary upload directory is deleted in a finally block.
     """
-    temp_dir = tempfile.mkdtemp()
+    if not is_ffmpeg_available():
+        raise HTTPException(
+            status_code=500,
+            detail="FFmpeg binary is unavailable on the backend system path."
+        )
+
+    temp_dir = tempfile.mkdtemp(prefix="voxa_stream_")
     file_path = os.path.join(temp_dir, file.filename or "recording.mp3")
 
     content = await file.read()
@@ -174,6 +214,8 @@ async def analyze_file_stream(file: UploadFile = File(...)):
                 "message": "We couldn't finish analyzing this file.",
                 "detail": str(e),
             })
+        finally:
+            cleanup_files([temp_dir])
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -182,11 +224,19 @@ async def analyze_file_stream(file: UploadFile = File(...)):
 async def analyze_url(req: URLAnalyzeRequest):
     """
     Standard HTTP endpoint for URL analysis.
+    Guarantees downloaded media file is deleted in a finally block.
     """
+    if not is_ffmpeg_available():
+        raise HTTPException(
+            status_code=500,
+            detail="FFmpeg binary is unavailable on the backend system path."
+        )
+
     url = req.url
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
 
+    audio_path = None
     try:
         audio_path = await asyncio.to_thread(download_youtube_audio, url)
         res = await asyncio.to_thread(process_meeting, audio_path)
@@ -195,18 +245,29 @@ async def analyze_url(req: URLAnalyzeRequest):
     except Exception as e:
         logger.exception("Error in /analyze-url endpoint")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if audio_path:
+            cleanup_files([audio_path])
 
 
 @app.post("/analyze-url/stream")
 async def analyze_url_stream(req: URLAnalyzeRequest):
     """
     Real-time Server-Sent Events (SSE) stream for URL processing pipeline.
+    Guarantees downloaded media file is deleted in a finally block.
     """
+    if not is_ffmpeg_available():
+        raise HTTPException(
+            status_code=500,
+            detail="FFmpeg binary is unavailable on the backend system path."
+        )
+
     url = req.url
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
 
     async def event_generator() -> AsyncGenerator[str, None]:
+        audio_path = None
         try:
             yield format_sse("progress", {
                 "stage": "preparing",
@@ -256,6 +317,9 @@ async def analyze_url_stream(req: URLAnalyzeRequest):
                 "message": "We couldn't download or analyze this URL.",
                 "detail": str(e),
             })
+        finally:
+            if audio_path:
+                cleanup_files([audio_path])
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
