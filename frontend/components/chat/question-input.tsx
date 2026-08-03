@@ -3,17 +3,27 @@
 import { useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
+import { getAskPlaceholder } from '@/lib/content-helpers'
 import { cn } from '@/lib/utils'
+import type { ContentType } from '@/types/content'
 
 interface QuestionInputProps {
   onSubmit: (question: string) => void
+  sourceType?: ContentType
   isLoading?: boolean
   className?: string
 }
 
-export function QuestionInput({ onSubmit, isLoading, className }: QuestionInputProps) {
+export function QuestionInput({
+  onSubmit,
+  sourceType = 'recording',
+  isLoading,
+  className,
+}: QuestionInputProps) {
   const [value, setValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const placeholder = getAskPlaceholder(sourceType)
 
   const handleSubmit = useCallback(() => {
     const q = value.trim()
@@ -36,7 +46,6 @@ export function QuestionInput({ onSubmit, isLoading, className }: QuestionInputP
 
   return (
     <div className={cn('relative w-full max-w-[660px] mx-auto', className)}>
-      {/* Underline input — editorial style */}
       <div
         className="relative flex items-center gap-3 pb-2 border-b-[1.5px] transition-colors duration-150"
         style={{
@@ -51,17 +60,16 @@ export function QuestionInput({ onSubmit, isLoading, className }: QuestionInputP
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="What do you want to know?"
-          aria-label="Ask a question about this meeting"
+          placeholder={placeholder}
+          aria-label={placeholder}
           disabled={isLoading}
           className={cn(
             'flex-1 text-[15px] bg-transparent outline-none',
-            'placeholder:opacity-30 disabled:opacity-50',
+            'placeholder:opacity-35 disabled:opacity-50'
           )}
           style={{ color: 'var(--color-text-primary)' }}
         />
 
-        {/* Submit icon — shows arrow when there's text */}
         <AnimatePresence mode="wait">
           {isEmpty || isLoading ? (
             <motion.div

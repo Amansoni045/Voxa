@@ -11,13 +11,13 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'Voxa — Every meeting, distilled.',
+  title: 'Voxa — Any content, distilled.',
   description:
-    'Drop in a recording. Get everything that mattered — decisions, action items, questions, and more.',
-  keywords: ['meeting', 'summary', 'transcription', 'productivity'],
+    'Drop in a recording, paste a YouTube link, or upload any file. Get decisions, action items, questions, and full transcripts.',
+  keywords: ['youtube', 'podcast', 'lecture', 'meeting', 'summary', 'transcription', 'productivity'],
   openGraph: {
-    title: 'Voxa — Every meeting, distilled.',
-    description: "Drop in a recording. We'll handle the rest.",
+    title: 'Voxa — Any content, distilled.',
+    description: 'Drop in a recording or link. We handle the rest.',
     type: 'website',
   },
 }

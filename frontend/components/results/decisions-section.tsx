@@ -4,10 +4,11 @@ import { motion } from 'framer-motion'
 import { SectionLabel } from '@/components/shared/section-label'
 import { EmptyState } from '@/components/shared/empty-state'
 import { parseDecisions } from '@/lib/parsers'
+import { getDecisionsEmptyMessage } from '@/lib/content-helpers'
 import { staggerContainer, documentCascade } from '@/lib/motion'
-import type { Decision } from '@/types/meeting'
+import type { Decision, ContentType } from '@/types/content'
 
-function DecisionItem({ decision, index }: { decision: Decision; index: number }) {
+function DecisionItem({ decision }: { decision: Decision }) {
   return (
     <motion.div
       variants={documentCascade}
@@ -33,11 +34,13 @@ function DecisionItem({ decision, index }: { decision: Decision; index: number }
 
 interface DecisionsSectionProps {
   text: string
+  sourceType?: ContentType
   isVisible: boolean
 }
 
-export function DecisionsSection({ text, isVisible }: DecisionsSectionProps) {
+export function DecisionsSection({ text, sourceType = 'recording', isVisible }: DecisionsSectionProps) {
   const decisions = parseDecisions(text)
+  const emptyMessage = getDecisionsEmptyMessage(sourceType)
 
   return (
     <section
@@ -50,7 +53,7 @@ export function DecisionsSection({ text, isVisible }: DecisionsSectionProps) {
       </SectionLabel>
 
       {decisions.length === 0 ? (
-        <EmptyState message="Nothing was decided — at least not out loud." />
+        <EmptyState message={emptyMessage} />
       ) : (
         <motion.div
           initial="hidden"
@@ -60,9 +63,9 @@ export function DecisionsSection({ text, isVisible }: DecisionsSectionProps) {
           style={{ borderColor: 'var(--color-separator)' }}
           role="list"
         >
-          {decisions.map((decision, i) => (
+          {decisions.map((decision) => (
             <div key={decision.id} role="listitem">
-              <DecisionItem decision={decision} index={i} />
+              <DecisionItem decision={decision} />
             </div>
           ))}
         </motion.div>

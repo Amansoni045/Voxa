@@ -1,53 +1,101 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { X } from 'lucide-react'
-import { Logo } from '@/components/layout/logo'
+import { X, AlertCircle, RefreshCw, ArrowLeft } from 'lucide-react'
 import { StagePoem } from '@/components/processing/stage-poem'
-import { useMeetingStore } from '@/stores/meeting-store'
+import { useContentStore } from '@/stores/content-store'
 import { useProcessing } from '@/hooks/use-processing'
+import { getContentTypeBadge } from '@/lib/content-helpers'
 import { cn } from '@/lib/utils'
 
 export default function ProcessingPage() {
   const router = useRouter()
-  const currentMeeting = useMeetingStore((s) => s.currentMeeting)
-  const processingFile = useMeetingStore((s) => s.processingFile)
-  const processingUrl = useMeetingStore((s) => s.processingUrl)
-  const setProcessingFile = useMeetingStore((s) => s.setProcessingFile)
-  const setProcessingUrl = useMeetingStore((s) => s.setProcessingUrl)
+  const currentContent = useContentStore((s) => s.currentContent)
+  const processingFile = useContentStore((s) => s.processingFile)
+  const processingUrl = useContentStore((s) => s.processingUrl)
+  const processingSourceType = useContentStore((s) => s.processingSourceType)
+  const processingError = useContentStore((s) => s.processingError)
+  const resetProcessing = useContentStore((s) => s.resetProcessing)
+  const setProcessingFile = useContentStore((s) => s.setProcessingFile)
+  const setProcessingUrl = useContentStore((s) => s.setProcessingUrl)
 
-  // isApiDone is true when the meeting analysis has landed in the store
-  const isApiDone = currentMeeting !== null
+  const isApiDone = currentContent !== null
 
   const { currentStageIndex, completedStages, isDone } = useProcessing(isApiDone)
 
-  // Navigate to results when processing is fully done
+  // Navigate to /analysis/[id] when processing is fully done and content exists
   useEffect(() => {
-    if (isDone && currentMeeting) {
+    if (isDone && currentContent && !processingError) {
       const timer = setTimeout(() => {
-        router.push(`/meeting/${currentMeeting.id}`)
+        router.push(`/analysis/${currentContent.id}`)
       }, 400)
       return () => clearTimeout(timer)
     }
-  }, [isDone, currentMeeting, router])
+  }, [isDone, currentContent, processingError, router])
 
   const handleCancel = () => {
-    setProcessingFile(null)
-    setProcessingUrl(null)
+    resetProcessing()
     router.push('/')
   }
 
+  const badge = processingSourceType ? getContentTypeBadge(processingSourceType) : 'Content'
   const sourceName =
-    processingFile ?? (processingUrl ? new URL(processingUrl).hostname : null)
+    processingFile ??
+    (processingUrl
+      ? `${badge}: ${new URL(processingUrl).hostname}`
+      : `Distilling ${badge.toLowerCase()}...`)
 
+  // ─── Honest Failure View ──────────────────────────────────────────
+  if (processingError) {
+    return (
+      <main
+        className="min-h-dvh flex flex-col items-center justify-center relative p-6 text-center"
+        style={{ backgroundColor: 'var(--color-bg)' }}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.25, ease: 'easeOut' }}
+          className="w-full max-w-[440px] flex flex-col items-center gap-5 p-8 rounded-[24px] border border-[var(--color-border)] shadow-xl"
+          style={{ backgroundColor: 'var(--color-surface)' }}
+        >
+          <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center">
+            <AlertCircle size={24} strokeWidth={2} />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <h2 className="text-[20px] font-semibold tracking-[-0.015em]" style={{ color: 'var(--color-text-primary)' }}>
+              We couldn't finish analyzing this content
+            </h2>
+            <p className="text-[14px] leading-[1.6]" style={{ color: 'var(--color-text-secondary)' }}>
+              {processingError}
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full mt-2">
+            <button
+              onClick={handleCancel}
+              className="w-full sm:flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-[10px] text-[13px] font-medium border border-[var(--color-border)] transition-all hover:bg-[var(--color-zone)]"
+              style={{ color: 'var(--color-text-primary)' }}
+            >
+              <ArrowLeft size={14} />
+              <span>Return Home</span>
+            </button>
+          </div>
+        </motion.div>
+      </main>
+    )
+  }
+
+  // ─── Normal Poetic Processing View ───────────────────────────────
   return (
     <main
       className="min-h-dvh flex flex-col items-center justify-center relative overflow-hidden"
       style={{ backgroundColor: 'var(--color-bg)' }}
     >
-      {/* Subtle ambient background — very slow warm gradient shift */}
+      {/* Ambient background */}
       <div
         className="absolute inset-0 pointer-events-none"
         aria-hidden="true"
@@ -59,7 +107,7 @@ export default function ProcessingPage() {
         }}
       />
 
-      {/* Cancel — top-left, unobtrusive */}
+      {/* Cancel button */}
       <div className="absolute top-4 left-5">
         <button
           onClick={handleCancel}
@@ -75,13 +123,13 @@ export default function ProcessingPage() {
         </button>
       </div>
 
-      {/* Source name — trust anchor */}
+      {/* Source badge + title */}
       {sourceName && (
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.3, duration: 0.4 }}
-          className="absolute top-4 left-1/2 -translate-x-1/2 text-[12px] max-w-[240px] truncate text-center"
+          className="absolute top-4 left-1/2 -translate-x-1/2 text-[12px] max-w-[280px] truncate text-center font-medium"
           style={{ color: 'var(--color-text-tertiary)' }}
           aria-label={`Processing: ${sourceName}`}
         >
@@ -89,7 +137,7 @@ export default function ProcessingPage() {
         </motion.p>
       )}
 
-      {/* Stage poem — center of screen */}
+      {/* Stage poem */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}

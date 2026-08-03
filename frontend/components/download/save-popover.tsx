@@ -65,7 +65,7 @@ export function SavePopover({ meeting, size = 'md' }: SavePopoverProps) {
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <button
-          aria-label="Save a copy of this meeting report"
+          aria-label="Save a copy of this analysis report"
           className={cn(
             'flex items-center gap-2 rounded-[8px] font-medium transition-all duration-150',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-1',

@@ -4,13 +4,14 @@ import { motion } from 'framer-motion'
 import { SectionLabel } from '@/components/shared/section-label'
 import { EmptyState } from '@/components/shared/empty-state'
 import { parseActionItems } from '@/lib/parsers'
-import { useMeetingStore } from '@/stores/meeting-store'
+import { getActionsEmptyMessage } from '@/lib/content-helpers'
+import { useContentStore } from '@/stores/content-store'
 import { staggerContainer, documentCascade, toggleFill } from '@/lib/motion'
-import type { ActionItem } from '@/types/meeting'
+import type { ActionItem, ContentType } from '@/types/content'
 
-function ActionRow({ item, meetingId }: { item: ActionItem; meetingId: string }) {
-  const completedItems = useMeetingStore((s) => s.completedItems)
-  const toggleItem = useMeetingStore((s) => s.toggleItem)
+function ActionRow({ item }: { item: ActionItem }) {
+  const completedItems = useContentStore((s) => s.completedItems)
+  const toggleItem = useContentStore((s) => s.toggleItem)
   const isCompleted = completedItems[item.id] ?? false
 
   return (
@@ -19,7 +20,6 @@ function ActionRow({ item, meetingId }: { item: ActionItem; meetingId: string })
       className="group flex items-center gap-4 py-4 border-b transition-colors duration-150"
       style={{ borderColor: 'var(--color-separator)' }}
     >
-      {/* Custom toggle */}
       <button
         onClick={() => toggleItem(item.id)}
         aria-label={isCompleted ? `Mark "${item.task}" as incomplete` : `Mark "${item.task}" as done`}
@@ -31,7 +31,6 @@ function ActionRow({ item, meetingId }: { item: ActionItem; meetingId: string })
             : 'var(--color-border-hover)',
         }}
       >
-        {/* Fill circle */}
         <motion.div
           className="absolute inset-[2px] rounded-full"
           style={{ backgroundColor: 'var(--color-success)' }}
@@ -41,7 +40,6 @@ function ActionRow({ item, meetingId }: { item: ActionItem; meetingId: string })
         />
       </button>
 
-      {/* Task text + meta */}
       <div className="flex-1 min-w-0">
         <p
           className="text-[15px] leading-[1.5] tracking-[-0.005em] transition-all duration-300"
@@ -76,12 +74,14 @@ function ActionRow({ item, meetingId }: { item: ActionItem; meetingId: string })
 
 interface ActionsSectionProps {
   text: string
-  meetingId: string
+  contentId: string
+  sourceType?: ContentType
   isVisible: boolean
 }
 
-export function ActionsSection({ text, meetingId, isVisible }: ActionsSectionProps) {
+export function ActionsSection({ text, contentId, sourceType = 'recording', isVisible }: ActionsSectionProps) {
   const items = parseActionItems(text)
+  const emptyMessage = getActionsEmptyMessage(sourceType)
 
   return (
     <section
@@ -94,7 +94,7 @@ export function ActionsSection({ text, meetingId, isVisible }: ActionsSectionPro
       </SectionLabel>
 
       {items.length === 0 ? (
-        <EmptyState message="No tasks came out of this one." />
+        <EmptyState message={emptyMessage} />
       ) : (
         <motion.div
           initial="hidden"
@@ -107,7 +107,7 @@ export function ActionsSection({ text, meetingId, isVisible }: ActionsSectionPro
         >
           {items.map((item) => (
             <div key={item.id} role="listitem">
-              <ActionRow item={item} meetingId={meetingId} />
+              <ActionRow item={item} />
             </div>
           ))}
         </motion.div>

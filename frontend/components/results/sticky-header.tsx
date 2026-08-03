@@ -2,30 +2,37 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useRouter } from 'next/navigation'
+import { Plus } from 'lucide-react'
 import { Logo } from '@/components/layout/logo'
 import { SavePopover } from '@/components/download/save-popover'
 import { stickyHeaderVariants } from '@/lib/motion'
-import type { MeetingAnalysis } from '@/types/meeting'
+import type { ContentAnalysis } from '@/types/content'
 
 interface StickyHeaderProps {
-  meeting: MeetingAnalysis
+  content: ContentAnalysis
   titleRevealComplete: boolean
+  onAnalyzeAnother?: () => void
 }
 
-export function StickyHeader({ meeting, titleRevealComplete }: StickyHeaderProps) {
+export function StickyHeader({ content, titleRevealComplete, onAnalyzeAnother }: StickyHeaderProps) {
+  const router = useRouter()
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
     if (!titleRevealComplete) return
 
     const handleScroll = () => {
-      // Show sticky header after scrolling past the title (roughly 180px)
       setIsVisible(window.scrollY > 160)
     }
 
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
   }, [titleRevealComplete])
+
+  const handleLogoClick = () => {
+    router.push('/')
+  }
 
   return (
     <AnimatePresence>
@@ -45,16 +52,29 @@ export function StickyHeader({ meeting, titleRevealComplete }: StickyHeaderProps
           }}
           role="banner"
         >
-          <Logo size="sm" />
+          <div className="cursor-pointer" onClick={handleLogoClick}>
+            <Logo size="sm" />
+          </div>
 
           <p
-            className="absolute left-1/2 -translate-x-1/2 text-[14px] font-medium tracking-[-0.01em] max-w-[360px] truncate text-center"
+            className="absolute left-1/2 -translate-x-1/2 text-[14px] font-medium tracking-[-0.01em] max-w-[320px] truncate text-center hidden md:block"
             style={{ color: 'var(--color-text-primary)' }}
           >
-            {meeting.title}
+            {content.title}
           </p>
 
-          <SavePopover meeting={meeting} size="sm" />
+          <div className="flex items-center gap-2">
+            {onAnalyzeAnother && (
+              <button
+                onClick={onAnalyzeAnother}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] text-[12px] font-medium transition-colors bg-[var(--color-accent-light)] text-[var(--color-accent)] hover:opacity-80"
+              >
+                <Plus size={12} strokeWidth={2.5} />
+                <span>Analyze Another</span>
+              </button>
+            )}
+            <SavePopover meeting={content} size="sm" />
+          </div>
         </motion.header>
       )}
     </AnimatePresence>

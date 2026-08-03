@@ -4,56 +4,43 @@ import { useState, useCallback } from 'react'
 import { SectionLabel } from '@/components/shared/section-label'
 import { QuestionInput } from '@/components/chat/question-input'
 import { QAPairItem } from '@/components/chat/qa-pair'
-import { useMeetingStore } from '@/stores/meeting-store'
-import { chatWithMeeting, MOCK_MEETING } from '@/lib/api'
-import { generateId } from '@/lib/utils'
-
-// Inline mock answers for demo when backend is unavailable
-const DEMO_ANSWERS: Record<string, string> = {
-  default:
-    'Based on the meeting transcript, the team discussed accelerating the mobile app launch date and making key decisions about API migration ownership and the design system budget approval process.',
-}
+import { useContentStore } from '@/stores/content-store'
+import { chatWithMeeting } from '@/lib/api'
+import { getAskHeaderLabel } from '@/lib/content-helpers'
+import type { ContentType } from '@/types/content'
 
 interface AskSectionProps {
-  meetingId: string
+  contentId: string
+  sourceType?: ContentType
 }
 
-export function AskSection({ meetingId }: AskSectionProps) {
-  const addQAPair = useMeetingStore((s) => s.addQAPair)
-  const chatHistoryMap = useMeetingStore((s) => s.chatHistory)
-  const chatHistory = chatHistoryMap[meetingId] ?? []
+export function AskSection({ contentId, sourceType = 'recording' }: AskSectionProps) {
+  const addQAPair = useContentStore((s) => s.addQAPair)
+  const chatHistoryMap = useContentStore((s) => s.chatHistory)
+  const chatHistory = chatHistoryMap[contentId] ?? []
   const [isLoading, setIsLoading] = useState(false)
+
+  const label = getAskHeaderLabel(sourceType)
 
   const handleQuestion = useCallback(
     async (question: string) => {
       setIsLoading(true)
 
-      // Optimistically show question
-      const tempId = generateId()
-
       try {
-        let answer: string
-        try {
-          answer = await chatWithMeeting(meetingId, question)
-        } catch {
-          // Fall back to demo answer if backend unavailable
-          answer =
-            DEMO_ANSWERS[question.toLowerCase()] ??
-            DEMO_ANSWERS['default']
-        }
-
-        addQAPair(meetingId, { question, answer })
-      } catch {
-        addQAPair(meetingId, {
+        const answer = await chatWithMeeting(contentId, question)
+        addQAPair(contentId, { question, answer })
+      } catch (err: any) {
+        addQAPair(contentId, {
           question,
           answer:
-            "Something didn't work with that question. Try asking something more specific.",
+            err.message ||
+            "We couldn't get an answer right now. Please make sure the Voxa backend server is running and try again.",
         })
       } finally {
         setIsLoading(false)
       }
     },
-    [meetingId, addQAPair]
+    [contentId, addQAPair]
   )
 
   return (
@@ -63,7 +50,7 @@ export function AskSection({ meetingId }: AskSectionProps) {
       className="scroll-mt-14"
     >
       <SectionLabel withAccentBar className="mb-6">
-        <span id="heading-ask">Ask about this meeting</span>
+        <span id="heading-ask">{label}</span>
       </SectionLabel>
 
       {/* Q&A history */}
@@ -98,6 +85,7 @@ export function AskSection({ meetingId }: AskSectionProps) {
       {/* Input */}
       <QuestionInput
         onSubmit={handleQuestion}
+        sourceType={sourceType}
         isLoading={isLoading}
       />
     </section>

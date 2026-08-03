@@ -7,15 +7,17 @@ import { SectionLabel } from '@/components/shared/section-label'
 import { EmptyState } from '@/components/shared/empty-state'
 import { TranscriptParagraphItem } from '@/components/transcript/transcript-paragraph'
 import { parseTranscript } from '@/lib/parsers'
-import { staggerContainer, documentCascade } from '@/lib/motion'
-import { cn } from '@/lib/utils'
+import { getTranscriptEmptyMessage } from '@/lib/content-helpers'
+import { staggerContainer } from '@/lib/motion'
+import type { ContentType } from '@/types/content'
 
 interface TranscriptSectionProps {
   text?: string
+  sourceType?: ContentType
   isVisible: boolean
 }
 
-export function TranscriptSection({ text, isVisible }: TranscriptSectionProps) {
+export function TranscriptSection({ text, sourceType = 'recording', isVisible }: TranscriptSectionProps) {
   const [searchQuery, setSearchQuery] = useState('')
 
   const paragraphs = useMemo(
@@ -42,6 +44,8 @@ export function TranscriptSection({ text, isVisible }: TranscriptSectionProps) {
     []
   )
 
+  const emptyMessage = getTranscriptEmptyMessage(sourceType)
+
   if (!text?.trim()) {
     return (
       <section
@@ -52,7 +56,7 @@ export function TranscriptSection({ text, isVisible }: TranscriptSectionProps) {
         <SectionLabel withAccentBar className="mb-5">
           <span id="heading-transcript">Transcript</span>
         </SectionLabel>
-        <EmptyState message="No transcript available for this meeting." />
+        <EmptyState message={emptyMessage} />
       </section>
     )
   }
@@ -63,13 +67,11 @@ export function TranscriptSection({ text, isVisible }: TranscriptSectionProps) {
       aria-labelledby="heading-transcript"
       className="scroll-mt-14"
     >
-      {/* Header with search */}
       <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
         <SectionLabel withAccentBar>
           <span id="heading-transcript">Transcript</span>
         </SectionLabel>
 
-        {/* Search — editorial underline style */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <div
             className="flex items-center gap-2 pb-1 border-b transition-colors duration-150"
@@ -102,7 +104,6 @@ export function TranscriptSection({ text, isVisible }: TranscriptSectionProps) {
         </div>
       </div>
 
-      {/* Paragraphs */}
       {filteredParagraphs.length === 0 ? (
         <EmptyState message="No matches found." />
       ) : (
@@ -113,7 +114,7 @@ export function TranscriptSection({ text, isVisible }: TranscriptSectionProps) {
           className="divide-y"
           style={{ '--tw-divide-color': 'var(--color-separator)' } as React.CSSProperties}
           role="region"
-          aria-label="Meeting transcript"
+          aria-label="Transcript content"
         >
           {filteredParagraphs.map((paragraph) => (
             <TranscriptParagraphItem

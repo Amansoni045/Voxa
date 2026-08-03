@@ -170,7 +170,7 @@ export function UploadZone({ onFile, className }: UploadZoneProps) {
                   className="text-[15px] font-medium tracking-[-0.01em]"
                   style={{ color: 'var(--color-text-primary)' }}
                 >
-                  Drop a recording to begin
+                  Drop any audio, video, or recording file
                 </motion.p>
               )}
             </AnimatePresence>

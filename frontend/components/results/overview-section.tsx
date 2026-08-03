@@ -3,15 +3,19 @@
 import { motion } from 'framer-motion'
 import { SectionLabel } from '@/components/shared/section-label'
 import { parseSummaryBullets } from '@/lib/parsers'
+import { getOverviewSectionLabel } from '@/lib/content-helpers'
 import { staggerContainer, documentCascade } from '@/lib/motion'
+import type { ContentType } from '@/types/content'
 
 interface OverviewSectionProps {
   summary: string
+  sourceType?: ContentType
   isVisible: boolean
 }
 
-export function OverviewSection({ summary, isVisible }: OverviewSectionProps) {
+export function OverviewSection({ summary, sourceType = 'recording', isVisible }: OverviewSectionProps) {
   const bullets = parseSummaryBullets(summary)
+  const label = getOverviewSectionLabel(sourceType)
 
   return (
     <section
@@ -20,7 +24,7 @@ export function OverviewSection({ summary, isVisible }: OverviewSectionProps) {
       className="scroll-mt-14"
     >
       <SectionLabel withAccentBar className="mb-5">
-        <span id="heading-overview">Overview</span>
+        <span id="heading-overview">{label}</span>
       </SectionLabel>
 
       <motion.div
@@ -35,7 +39,6 @@ export function OverviewSection({ summary, isVisible }: OverviewSectionProps) {
             variants={documentCascade}
             className="flex gap-3 items-start"
           >
-            {/* Left accent bar — editorial bullet */}
             <div
               className="mt-[5px] w-[2px] flex-shrink-0 rounded-full self-stretch"
               style={{
