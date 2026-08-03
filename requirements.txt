@@ -1,0 +1,47 @@
+# Core AI / LLM
+langchain>=0.3.27
+langchain-core>=0.3.74
+langchain-community>=0.3.29
+langchain-mistralai>=0.2.11
+mistralai>=1.9.10
+
+# Vector Database
+chromadb>=1.0.20
+
+# Embeddings
+sentence-transformers>=5.1.0
+huggingface-hub>=0.34.4
+
+# Whisper
+openai-whisper>=20250625
+torch>=2.8.0
+torchaudio>=2.8.0
+
+# Sarvam AI
+requests>=2.32.5
+
+# YouTube Download
+yt-dlp>=2025.8.1
+
+# Audio Processing
+ffmpeg-python>=0.2.0
+pydub>=0.25.1
+
+# PDF Export
+reportlab>=4.4.3
+
+# Text Processing
+tiktoken>=0.11.0
+
+# Environment Variables
+python-dotenv>=1.1.1
+
+# Streamlit UI
+streamlit>=1.49.0
+
+# Data Handling
+numpy>=2.3.2
+pandas>=2.3.1
+
+# Utilities
+tqdm>=4.67.1
