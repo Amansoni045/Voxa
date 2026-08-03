@@ -2,6 +2,7 @@ import whisper
 import os
 import requests
 from pydub import AudioSegment
+from concurrent.futures import ThreadPoolExecutor
 
 # Sarvam's sync STT-translate API rejects audio longer than 30s.
 # We slice each chunk into 25s pieces (with a 5s safety margin) before sending.
@@ -52,7 +53,7 @@ def _send_to_sarvam(piece_path: str) -> str:
         )
 
     if not response.ok:
-        print(f"\n❌ Sarvam returned {response.status_code}")
+        print(f"\n Sarvam returned {response.status_code}")
         print(f"Response body: {response.text}\n")
         response.raise_for_status()
 
@@ -99,21 +100,34 @@ def transcribe_chunk(chunk_path: str, language: str = "english") -> str:
     return transcribe_chunk_whisper(chunk_path)
 
 
-def transcribe_all(chunks: list, language: str = "english") -> str:
+def _transcribe_single_chunk_worker(chunk_info: tuple) -> str:
+    """
+    Helper function to process a single chunk within a thread worker.
+    Receives a tuple of (index, total_chunks, chunk_path, language).
+    Returns transcribed text or an empty string on error.
+    """
+    i, total, chunk, language = chunk_info
+    print(f"Transcribing chunk {i + 1}/{total}...")
+    try:
+        return transcribe_chunk(chunk, language=language)
+    except Exception as e:
+        print(f"Error transcribing chunk {i + 1}/{total} ({chunk}): {e}")
+        return ""
 
-    full_transcript = "" 
+
+def transcribe_all(chunks: list, language: str = "english") -> str:
+    if not chunks:
+        return ""
 
     engine = "Sarvam AI" if language.lower() == "hinglish" else "Whisper"
     print(f"Using {engine} for transcription.")
 
-    for i, chunk in enumerate(chunks):  
+    max_workers = min(4, len(chunks))
+    tasks = [(i, len(chunks), chunk, language) for i, chunk in enumerate(chunks)]
 
-        print(f"Transcribing chunk {i + 1}/{len(chunks)}...")
-
-        text = transcribe_chunk(chunk, language=language)  
-
-        full_transcript += text + " "  
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(executor.map(_transcribe_single_chunk_worker, tasks))
 
     print("Transcription complete.")
 
-    return full_transcript.strip()  
+    return " ".join([text for text in results if text]).strip()
